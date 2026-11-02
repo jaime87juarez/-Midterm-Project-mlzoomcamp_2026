@@ -65,3 +65,53 @@ Since cancellations are often imbalanced, accuracy alone is insufficient.
 the environment  was created with conda.
 then the file requirements.txt was used
 I used "pip freeze > requirements.txt" in order to update the requirements.txt
+
+# Deployment
+El modelo Random Forest presenta un error absoluto promedio de aproximadamente $14.32 por noche.
+En comparación, Ridge tiene un error promedio de $26.43.
+Esto representa una reducción del error de aproximadamente un 45.8%.
+RMSE = 22.572
+Random Forest también presenta un menor error cuadrático medio.
+Esta métrica penaliza especialmente las predicciones que se alejan considerablemente de los valores observados.
+R² = 0.780
+El modelo explica aproximadamente el 78% de la variabilidad observada del ADR en el conjunto de validación.
+3. ¿Qué modelo vamos a desplegar?
+Seleccionamos:
+RandomForestRegressor de Scikit-learn.
+Mantendremos los hiperparámetros que utilizaste en el notebook.
+
+
+Example:
+
+'''
+{
+  "data": {
+    "hotel": "City Hotel",
+    "lead_time": 30,
+    "stays_in_weekend_nights": 2,
+    "stays_in_week_nights": 3,
+    "adults": 2,
+    "children": 0,
+    "babies": 0,
+    "meal": "BB",
+    "market_segment": "Online TA",
+    "distribution_channel": "TA/TO",
+    "is_repeated_guest": 0,
+    "previous_cancellations": 0,
+    "previous_bookings_not_canceled": 0,
+    "reserved_room_type": "A",
+    "deposit_type": "No Deposit",
+    "customer_type": "Transient",
+    "arrival_month_num": 7,
+    "total_nights": 5,
+    "total_guests": 2
+  }
+}
+'''
+
+
+
+Para la reserva que simulamos, el modelo estima un ADR de $130 por noche.
+
+Como la reserva contempla cinco noches, el ingreso estimado por alojamiento sería de $650 , suponiendo que se mantenga ese ADR durante toda la estadía.
+
