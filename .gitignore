@@ -1,10 +1,46 @@
+# ============================================================
+# ENTORNOS VIRTUALES
+# ============================================================
+
 .venv/
+venv/
+env/
+
+# ============================================================
+# ARCHIVOS TEMPORALES DE PYTHON
+# ============================================================
+
 __pycache__/
-.ipynb_checkpoints/
+*.py[cod]
 .pytest_cache/
+.ipynb_checkpoints/
+
+# ============================================================
+# DATOS
+# ============================================================
+
+# No subir datos originales
 data/raw/*.csv
+
+# No subir datos procesados
 data/processed/*
+
+# ============================================================
+# MODELOS DE MACHINE LEARNING
+# ============================================================
+
+# Ignorar modelos generados durante los experimentos
 models/*.joblib
+
+# Excepción: modelo definitivo utilizado por FastAPI
+!models/final_model.joblib
+
+# ============================================================
+# RESULTADOS GENERADOS
+# ============================================================
+
 outputs/figures/*.png
 outputs/metrics/*.json
+
+# Conservar archivos .gitkeep
 !.gitkeep
