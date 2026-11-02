@@ -1,89 +1,282 @@
-# -Midterm-Project-mlzoomcamp_2026
-My name is Jaime Juárez and this is a repository of the midterm proyect for the MLZoomcamp cohort 2026.
+# Hotel Yield ML — ML Zoomcamp 2026 Midterm Project
 
-the proyect will use the Kaggle Repository :https://www.kaggle.com/datasets/jessemostipak/hotel-booking-demand
+**Author:** Jaime Juárez  
+**Course:** Machine Learning Zoomcamp, 2026 cohort  
+**Task:** Predict the Average Daily Rate (ADR) of a hotel booking and deploy one selected model using FastAPI and Docker.
+
+## Contents
+
+1. [Project overview](#1-project-overview)
+2. [Dataset and problem definition](#2-dataset-and-problem-definition)
+3. [Exploratory analysis and modeling](#3-exploratory-analysis-and-modeling)
+4. [Model selection and results](#4-model-selection-and-results)
+5. [Repository structure](#5-repository-structure)
+6. [Reproduce the development environment](#6-reproduce-the-development-environment)
+7. [Run the notebooks and train the final model](#7-run-the-notebooks-and-train-the-final-model)
+8. [Run the API locally](#8-run-the-api-locally)
+9. [Deploy with Docker](#9-deploy-with-docker)
+10. [API reference and example prediction](#10-api-reference-and-example-prediction)
+11. [Testing and troubleshooting](#11-testing-and-troubleshooting)
+12. [Limitations and next steps](#12-limitations-and-next-steps)
+
+## 1. Project overview
+
+Hotel rooms are **perishable inventory**: a room-night that goes unsold cannot be recovered after that date. Hotel managers must balance price, occupancy, seasonality, booking lead time, distribution channels, and cancellation risk.
+
+This project applies supervised machine learning to historical booking records. Its **deployed task is ADR regression**:
+
+> Given the available attributes of a hotel booking, what daily room rate would a model predict from historical bookings?
+
+The repository includes exploratory data analysis (EDA), a separate cancellation-classification exercise, regression model comparison, and an HTTP inference API.
+
+**Scope boundary:** The deployed model predicts *historically observed booked ADR*. It is **not** a price optimizer, an estimate of the causal effect of price on demand, or a forecast of total market demand.
+
+### Deployment architecture
+
+```text
+Hotel Booking Demand dataset
+            |
+            v
+  src/pipeline.py (preparation)
+            |
+            v
+   train.py (one final model)
+            |
+            v
+ models/final_model.joblib
+   [preprocessing + Random Forest]
+            |
+            v
+    app/predic.py (inference)
+            |
+            v
+      app/main.py (FastAPI)
+            |
+            v
+      Docker container
+            |
+            v
+      POST /predict → ADR
+```
+
+## 2. Dataset and problem definition
+
+**Source:** [Hotel Booking Demand — Kaggle](https://www.kaggle.com/datasets/jessemostipak/hotel-booking-demand). The widely used dataset contains approximately **119,390 bookings and 32 original fields** for a City Hotel and a Resort Hotel, covering arrivals from **July 2015 through August 2017**.
+
+Examples of useful attributes include booking lead time, length of stay, guest counts, market segment, distribution channel, room type, and arrival month.
+
+### Regression target and filtering
+
+- **Target:** `adr` (Average Daily Rate).
+- **Selected records:** `is_canceled == 0`, `0 <= adr <= 1000`, and `total_nights > 0`.
+- **Derived predictors:** The preprocessing pipeline adds such fields as `arrival_month_num`, `total_nights`, and `total_guests`.
+
+These filters define the modeling population; they do not reveal the bookings that might have occurred at other prices. ADR predictions should not be interpreted as recommended selling prices.
+
+### Companion classification task
+
+`notebooks/02_Clasificacion.ipynb` explores cancellation prediction (`is_canceled`). Classification can help assess cancellation risk; it is **not** the model deployed in this project. Possible classification metrics include precision, recall, F1-score, and ROC-AUC.
+
+## 3. Exploratory analysis and modeling
+
+The analysis uses the following workflow:
+
+1. Load and inspect booking data; examine nulls, categories, and distributions.
+2. Explore seasonality, ADR, lead time, booking segments, and cancellations.
+3. Prepare the regression dataset and split it into training, validation, and test sets using the project pipeline.
+4. Fit preprocessing **inside** a Scikit-learn `Pipeline` on the training data.
+5. Compare a regularized linear baseline (**Ridge**) with a nonlinear ensemble (**Random Forest**).
+6. Select a single model using **validation** performance, then reserve the test set for a final unbiased evaluation.
+7. Serialize the selected fitted pipeline and expose it for inference.
+
+**Why the pipeline matters:** Encoding and imputation learned during training must also be applied at prediction time. The serialized artifact includes these fitted transformations, not only the regressor.
+
+## 4. Model selection and results
+
+### Validation-set scores
+
+| Model | MAE ↓ | RMSE ↓ | R² ↑ |
+|---|---:|---:|---:|
+| Ridge Regression | 26.425 | 36.309 | 0.432 |
+| **Random Forest Regressor** | **14.324** | **22.572** | **0.780** |
+
+Random Forest had the lowest mean absolute error and root mean squared error and the highest R² on the reported validation split. Its MAE was about **45.8% lower** than Ridge's.
+
+**Important:** These are **validation** results, not final held-out test scores. Add test-set results separately after running the selected model on the untouched test set. Do not adjust hyperparameters against test performance.
+
+### Selected model
+
+```python
+RandomForestRegressor(
+    n_estimators=100,
+    max_depth=16,
+    min_samples_leaf=5,
+    random_state=1,
+    n_jobs=-1,
+)
+```
+
+Only **one model** is deployed. `train.py` fits and saves the selected Random Forest pipeline; `app/predic.py` loads that saved artifact and predicts ADR. Ridge remains a benchmark in the notebook, not a second deployed service.
+
+## 5. Repository structure
+
+```text
+HOTEL_YIELD_ML/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                  # FastAPI application and routes
+│   └── predic.py                # Model loading and prediction logic
+├── docs/
+│   ├── DICCIONARIO.md
+│   ├── GUIA_DIDACTICA.md
+│   ├── indicaciones_venv.md
+│   └── METODOLOGIA.md
+├── models/
+│   └── final_model.joblib       # Generated by train.py;
+├── notebooks/
+│   ├── 01_EDA.ipynb
+│   ├── 02_Clasificacion.ipynb
+│   └── 03_Regresion_Yield.ipynb
+├── src/
+│   ├── classification.py
+│   ├── download_data.py
+│   ├── eda.py
+│   ├── pipeline.py
+│   └── regression.py
+├── tests/
+├── train.py
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+├── requirements.txt           # Development / notebooks / training
+├── requirements-docker.txt    # Lean inference dependencies
+└── README.md
+```
+
+> The tree describes the intended workflow. Generated artifacts and the downloaded dataset may be excluded from version control. For reproducibility, ensure the dataset can be obtained and `train.py` can recreate `models/final_model.joblib`.
+
+## 6. Reproduce the development environment
+
+### Prerequisites
+
+- **Python 3.11**, preferably matching the interpreter and packages used to train the saved artifact.
+- Git and internet access to install dependencies / obtain the Kaggle dataset.
+- Docker Desktop or Docker Engine **only** if running the containerized API.
+- VS Code with Python/Jupyter extensions (optional, for notebooks).
+
+> **Dependency files:** `requirements.txt` contains the project's **direct development dependencies** (data science, Jupyter, model training, API, and testing). `requirements-docker.txt` installs the smaller set needed to **serve** the trained model.
+
+## 7. Run the notebooks and train the final model
 
 
 
-# Comprehensive Guide: Hotel Booking Demand Analysis & Yield Management with Machine Learning
+### Recommended notebook order
 
-## 1. Dataset Overview
-The **Hotel Booking Demand** dataset on Kaggle (originally sourced from data published in *Elsevier* by Antonio, Almeida, and Nunes, 2019) contains hotel reservation records spanning from July 2015 to August 2017.
+1. `notebooks/01_EDA.ipynb` — explore booking data and pricing patterns.
+2. `notebooks/02_Clasificacion.ipynb` — experiment with cancellation classification (not deployed).
+3. `notebooks/03_Regresion_Yield.ipynb` — compare ADR regression models and select Random Forest.
 
-* **Scale:** Approximately 119,390 rows and 32 columns.
-* **Context:** It includes data from two distinct properties: a **City Hotel** and a **Resort Hotel**.
-* **Key Features Include:**
-  * **Temporal Data:** `arrival_date_year`, `arrival_date_month`, `arrival_date_week_number`, `lead_time` (number of days between booking and arrival).
-  * **Stay Details:** `stays_in_weekend_nights`, `stays_in_week_nights`, `adults`, `children`, `babies`.
-  * **Commercial Terms:** `adr` (Average Daily Rate / price per night), `deposit_type`, `customer_type`, `market_segment`.
-  * **Target/Operational Indicators:** `is_canceled` (whether the booking was cancelled or not), `required_car_parking_spaces`, `total_of_special_requests`.
+### Train one final model
 
----
+From the repository root, after providing the dataset at the location expected by the pipeline:
 
-## 2. Defining the Business Problems
-In the hospitality industry, hotels face two major challenges that directly impact revenue (Yield Management):
-1. **Revenue Uncertainty (Cancellations):** Last-minute cancellations leave rooms empty, destroying potential revenue if unsold inventory cannot be re-allocated.
-2. **Dynamic Pricing (Optimal Tariffs):** Setting the right price (`adr`) for a room based on demand patterns, season, and booking lead time to maximize total earnings without losing customers to competitors.
+```bash
+python train.py
+```
 
----
+Expected artifact:
 
-## 3. Solving the Problems with Machine Learning
+```text
+models/final_model.joblib
+```
 
-To address these challenges, we can build a dual-pipeline approach combining **Classification** and **Regression**.
+It contains the fitted preprocessing + Random Forest pipeline, feature names, and model metadata used by the prediction service. **Training and serving are separate:** API requests load the existing artifact; they do not retrain it.
 
-### A. Classification Problem: Predicting Booking Cancellations
-* **Objective:** Predict whether a customer will cancel their reservation (`is_canceled` = 1) or complete their stay (`is_canceled` = 0) at the time of booking or during the lead-up.
-* **Why it matters:** Allows the hotel to implement overbooking strategies, require non-refundable deposits, or re-open inventory proactively.
-* **Key Predictive Features:** `lead_time`, `deposit_type`, `previous_cancellations`, `booking_changes`, `customer_type`, `total_of_special_requests`.
-* ** Examples of Algorithms:** Logistic Regression (baseline), Random Forest Classifier, or Gradient Boosting (XGBoost/LightGBM).
+## 8. Run the API locally
 
-### B. Regression Problem: Predicting Optimal Pricing (ADR)
-* **Objective:** Predict the continuous target variable `adr` (Average Daily Rate) to understand pricing elasticity and suggest dynamic rates.
-* **Why it matters:** Helps automated pricing engines adjust room rates dynamically based on demand spikes, lead times, and room types.
-* **Key Predictive Features:** `arrival_date_month`, `stays_in_weekend_nights`, `reserved_room_type`, `market_segment`, `adults`.
-* **Examples of Algorithms:** Ridge/Lasso Regression, Random Forest Regressor, or XGBoost Regressor.
+Make sure `models/final_model.joblib` exists, and install the development dependencies as described above. From the repository root:
 
----
+```bash
+python -m uvicorn app.main:app --reload
+```
 
-## 4. Model Evaluation Metrics
+Open:
 
-To ensure our models perform reliably in a real-world production environment, we use specific evaluation metrics tailored to each problem type.
+- Swagger UI: <http://localhost:8000/docs>
+- Root status: <http://localhost:8000/>
+- Health endpoint: <http://localhost:8000/health>
+- Required features: <http://localhost:8000/features>
 
-### Evaluation Metrics for Classification (Cancellations)
-Since cancellations are often imbalanced, accuracy alone is insufficient.
-* **Precision:** Out of all bookings flagged as "likely to cancel", how many actually cancelled? (Minimizes false alarms where a valid guest is penalized).
-* **Recall (Sensitivity):** Out of all actual cancellations, how many did our model successfully catch? (Crucial to prevent empty rooms).
-* **F1-Score:** The harmonic mean of Precision and Recall, providing a balanced single metric.
-* **ROC-AUC (Receiver Operating Characteristic - Area Under Curve):** Measures the model's ability to discriminate between cancelled and non-cancelled reservations across all classification thresholds.
+Stop the local server with `Ctrl+C` before running Docker on the same port.
 
-### Evaluation Metrics for Regression (Pricing / ADR)
-* **MAE (Mean Absolute Error):** Measures the average magnitude of absolute errors in our predicted room prices (e.g., "our price predictions are off by an average of \$12.50"). Highly interpretable.
-* **RMSE (Root Mean Square Error):** Similar to MAE, but squares the errors before averaging, penalizing large pricing mistakes more heavily.
-* **R-squared ($R^2$):** Represents the proportion of variance in the `adr` that can be explained by our independent variables (closer to 1.0 is better).
+## 9. Deploy with Docker
 
-# env
-the environment  was created with conda.
-then the file requirements.txt was used
-I used "pip freeze > requirements.txt" in order to update the requirements.txt
+Docker serves the **same one saved model**. It does not need notebooks or training data at runtime.
 
-# Deployment
-El modelo Random Forest presenta un error absoluto promedio de aproximadamente $14.32 por noche.
-En comparación, Ridge tiene un error promedio de $26.43.
-Esto representa una reducción del error de aproximadamente un 45.8%.
-RMSE = 22.572
-Random Forest también presenta un menor error cuadrático medio.
-Esta métrica penaliza especialmente las predicciones que se alejan considerablemente de los valores observados.
-R² = 0.780
-El modelo explica aproximadamente el 78% de la variabilidad observada del ADR en el conjunto de validación.
-3. ¿Qué modelo vamos a desplegar?
-Seleccionamos:
-RandomForestRegressor de Scikit-learn.
-Mantendremos los hiperparámetros que utilizaste en el notebook.
+### Build the image
+
+Ensure `models/final_model.joblib` exists, then run from the root of the repository:
+
+```bash
+docker build -t hotel-yield-ml:v1 .
+```
+
+The `Dockerfile` installs `requirements-docker.txt`, copies `app/` and `models/`, and starts Uvicorn on port 8000.
+
+### Run and inspect
+
+```bash
+docker run -d --name hotel-yield-api -p 8000:8000 hotel-yield-ml:v1
+docker ps
+docker logs hotel-yield-api
+```
+
+Then test <http://localhost:8000/docs>. To stop and remove the container:
+
+```bash
+docker stop hotel-yield-api
+docker rm hotel-yield-api
+```
+
+### Rebuild after updating the code, dependencies, or model
+
+```bash
+docker build -t hotel-yield-ml:v1 .
+docker rm -f hotel-yield-api
+docker run -d --name hotel-yield-api -p 8000:8000 hotel-yield-ml:v1
+```
 
 
-Example:
+## 10. API reference and example prediction
 
-'''
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/` | Welcome message and running status |
+| `GET` | `/health` | Service health response |
+| `GET` | `/features` | Names of features required by the model |
+| `POST` | `/predict` | Predict ADR for one booking |
+
+### Input features
+
+`GET /features` returns **19 required fields**:
+
+```json
+{
+  "required_features": [
+    "hotel", "lead_time", "stays_in_weekend_nights", "stays_in_week_nights",
+    "adults", "children", "babies", "meal", "market_segment",
+    "distribution_channel", "is_repeated_guest", "previous_cancellations",
+    "previous_bookings_not_canceled", "reserved_room_type", "deposit_type",
+    "customer_type", "arrival_month_num", "total_nights", "total_guests"
+  ]
+}
+```
+
+### Example `POST /predict` request
+
+The API expects the features **inside a top-level `data` object**:
+
+```json
 {
   "data": {
     "hotel": "City Hotel",
@@ -107,11 +300,85 @@ Example:
     "total_guests": 2
   }
 }
-'''
+```
 
+**Observed response from the working API:**
 
+```json
+{
+  "predicted_adr": 130
+}
+```
 
-Para la reserva que simulamos, el modelo estima un ADR de $130 por noche.
+The service predicted an ADR of **130 per night** for this sample booking. For five nights, that corresponds to **650 in modeled room revenue**, assuming the ADR applies to all five room-nights and ignoring taxes and extras. The response depends on the supplied input, saved artifact, and dependency environment. It does **not** identify a revenue-maximizing price.
 
-Como la reserva contempla cinco noches, el ingreso estimado por alojamiento sería de $650 , suponiendo que se mantenga ese ADR durante toda la estadía.
+### Test through Swagger
 
+Open <http://localhost:8000/docs> → `POST /predict` → **Try it out** → replace the request body with the complete JSON above → **Execute**. A successful response has HTTP status `200` and a numeric `predicted_adr`.
+
+### Test through PowerShell
+
+```powershell
+$body = @'
+{
+  "data": {
+    "hotel": "City Hotel",
+    "lead_time": 30,
+    "stays_in_weekend_nights": 2,
+    "stays_in_week_nights": 3,
+    "adults": 2,
+    "children": 0,
+    "babies": 0,
+    "meal": "BB",
+    "market_segment": "Online TA",
+    "distribution_channel": "TA/TO",
+    "is_repeated_guest": 0,
+    "previous_cancellations": 0,
+    "previous_bookings_not_canceled": 0,
+    "reserved_room_type": "A",
+    "deposit_type": "No Deposit",
+    "customer_type": "Transient",
+    "arrival_month_num": 7,
+    "total_nights": 5,
+    "total_guests": 2
+  }
+}
+'@
+
+Invoke-RestMethod -Uri 'http://localhost:8000/predict' `
+  -Method Post -ContentType 'application/json' -Body $body
+```
+
+## 11. Testing and troubleshooting
+
+### Basic checks
+
+```bash
+python -m pytest tests/ -v
+```
+
+Automated tests depend on the assertions actually implemented under `tests/`. The following additional smoke checks are recommended:
+
+- `GET /` returns `"status": "running"`.
+- `GET /features` returns the 19 fields listed above.
+- `POST /predict` with the sample JSON returns HTTP `200` and a numeric ADR.
+- The local and Docker API produce matching outputs with the same model artifact and inputs.
+- Requests with missing/invalid input produce informative client errors.
+
+### Common issues
+
+## 12. Limitations and next steps
+
+- **Not dynamic pricing:** Predicting previously observed ADR does not calculate the optimal tariff.
+- **Selection bias:** Restricting the regression sample to non-cancelled bookings excludes other demand outcomes.
+- **No causal inference:** Historical associations do not establish how customers will react to changing prices.
+- **Data leakage risk:** Every input feature must be available at prediction time; review the pipeline and source fields accordingly.
+- **Model evaluation:** Publish held-out test MAE, RMSE, and R² before claiming generalization quality.
+- **Operational readiness:** Consider explicit Pydantic input validation, structured logging, monitoring, model versioning, and automated API tests.
+- **Revenue management extension:** Modeling booking demand at different offered prices, capacity constraints, cancellations, and seasonality would be required before attempting price optimization.
+
+---
+
+### Project note
+
+This project was prepared for the **ML Zoomcamp 2026** midterm assignment. AI assistance was used to help organize and polish parts of the README; model development, testing, and deployment should be verified against the repository and reproducible commands.
