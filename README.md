@@ -62,6 +62,6 @@ Since cancellations are often imbalanced, accuracy alone is insufficient.
 * **R-squared ($R^2$):** Represents the proportion of variance in the `adr` that can be explained by our independent variables (closer to 1.0 is better).
 
 # env
-the environment should was created with conda.
+the environment  was created with conda.
 then the file requirements.txt was used
 I used "pip freeze > requirements.txt" in order to update the requirements.txt
